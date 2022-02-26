@@ -1,0 +1,92 @@
+<html>
+<head><title>Local video playback</title>
+  <link rel="shortcut icon" href="#">
+</head>
+<body>
+    <audio style="width: 300px; height: 200px" playsinline autoplay id="local"></audio>
+    <audio style="width: 300px; height: 200px" playsinline autoplay id="remote"></audio>
+
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="text/javascript">
+      var socket = io()
+      const local = document.getElementById('local');
+      let localStream = null
+
+      async function makeCall() {
+        const configuration = {'iceServers': [{'urls': 'turn:turn.ruasdigital.id:3478', username:'test',
+        credential:'test123'}]}
+            
+        const peerConnection = new RTCPeerConnection(configuration);
+        var constraints = { video: { frameRate: { ideal: 5, max: 5 } } };
+        localStream =  await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+        console.log(localStream)
+        local.srcObject = localStream
+
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+        peerConnection.addEventListener('icecandidate', event => {
+            if (event.candidate) {
+                socket.emit('new-ice-candidate', {'iceCandidate': event.candidate});
+            }
+        });
+        
+        const offer = await peerConnection.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+        await peerConnection.setLocalDescription(offer);
+        socket.emit('offer', {'offer': offer});
+        
+        
+
+        socket.on('call-made', async message => {
+            console.log(message, 'callmade')
+            if (message.answer) {
+                const remoteDesc = new RTCSessionDescription(message.answer);
+                await peerConnection.setRemoteDescription(remoteDesc);
+            }
+        });
+
+        socket.on('candidates', async message => {
+          if (message.iceCandidate) {
+              try {
+                  await peerConnection.addIceCandidate(message.iceCandidate);
+
+              } catch (e) {
+                  console.error('Error adding received ice candidate', e);
+              }
+          }
+        });
+
+         peerConnection.addEventListener('icecandidate', event => {
+          if (event.candidate) {
+              socket.emit('new-ice-candidate', {'iceCandidate': event.candidate});
+          }
+
+         peerConnection.ontrack = async event => {
+          const [remoteStream] = event.streams;
+          console.log(remoteStream)
+          remote.srcObject = remoteStream;
+          console.log(remote)
+        };  
+      });
+
+       
+
+    }
+
+    </script>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <h1>halo</h1>
+    <button style="font-size: 100px" onclick="makeCall()">call</button>
+<!--     <video style="width: 100px; height: 100px" id="localVideo" autoplay playsinline controls="false"/>
+ --></body>
+</html>

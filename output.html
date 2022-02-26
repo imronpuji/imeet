@@ -1,0 +1,81 @@
+<html>
+<head><title>Local video playback</title>
+  <link rel="shortcut icon" href="#">
+</head>
+<body>
+  <h2>kjk</h2>
+    <audio style="width: 300px; height: 200px" playsinline autoplay id="remote"></audio>
+    <audio style="width: 300px; height: 200px" playsinline autoplay id="local"></audio>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="text/javascript">
+    var socket = io()
+    var remote = document.getElementById('remote');
+    const local = document.getElementById('local');
+    let localStream = null
+
+    async function answer(){
+      const configuration = {'iceServers': [{
+        username:'test',
+        credential:'test123',
+        'urls': 'turn:turn.ruasdigital.id:3478'}]}
+      const peerConnection = new RTCPeerConnection(configuration);
+      var constraints = { video: { frameRate: { ideal: 5, max: 5 } } };
+      localStream =  await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+
+      local.srcObject = await localStream
+
+      localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+      });
+
+      socket.on('message', async message => {
+          console.log(message)
+          if (message.offer) {
+              peerConnection.setRemoteDescription(new RTCSessionDescription(message.offer));
+              const answer = await peerConnection.createAnswer();
+              await peerConnection.setLocalDescription(answer);
+              socket.emit('answer', {'answer': answer});
+          }
+      });
+
+      peerConnection.ontrack = async event => {
+        const [remoteStream] = event.streams;
+        console.log(remoteStream)
+        remote.srcObject = remoteStream;
+        console.log(remote)
+      };     
+      socket.on('candidate', async message => {
+          console.log(message)
+          if (message.iceCandidate) {
+              try {
+                  await peerConnection.addIceCandidate(message.iceCandidate);
+
+              } catch (e) {
+                  console.error('Error adding received ice candidate', e);
+              }
+          }
+      });
+      peerConnection.addEventListener('icecandidate', event => {
+          if (event.candidate) {
+              socket.emit('news-ice-candidate', {'iceCandidate': event.candidate});
+          }
+      });
+
+      peerConnection.addEventListener('connectionstatechange', event => {
+          if (peerConnection.connectionState === 'connected') {
+              console.log('Peers connected')
+
+          }
+      });
+
+
+
+
+      
+    }
+    answer()
+
+    </script>
+</body>
+</html>
